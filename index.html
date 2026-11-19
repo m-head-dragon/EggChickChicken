@@ -57,10 +57,10 @@
       justify-content: space-between;
       align-items: center;
       background: var(--panel);
-      padding: 8px 12px;
+      padding: 8px 14px;
       border-radius: 12px;
       font-size: 13px;
-      gap: 6px;
+      gap: 8px;
     }
 
     .hud-item strong {
@@ -75,6 +75,37 @@
 
     .hud-timer.show {
       display: inline;
+    }
+
+    .hud-next {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+
+    .next-box {
+      width: 34px;
+      height: 34px;
+      border-radius: 6px;
+      background: rgba(17, 17, 20, 0.85);
+      border: 1px solid #3f3f46;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    canvas#next-canvas {
+      display: block;
+      width: 32px;
+      height: 32px;
+      aspect-ratio: 1 / 1;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
     }
 
     .rule-bar {
@@ -158,7 +189,7 @@
       z-index: 0;
     }
 
-    canvas {
+    canvas#board {
       position: relative;
       z-index: 1;
       display: block;
@@ -308,7 +339,10 @@
     <div class="hud-item">SCORE<strong><span id="score">0</span></strong></div>
     <div class="hud-item">CHAIN<strong><span id="chain">0</span></strong></div>
     <div id="hud-timer" class="hud-item hud-timer">TIME<strong><span id="timer">05:00</span></strong></div>
-    <button id="btn-reset" type="button">リセット</button>
+    <div class="hud-next">
+      <span>NEXT</span>
+      <div class="next-box"><canvas id="next-canvas" width="32" height="32"></canvas></div>
+    </div>
   </div>
 
   <div id="rule-bar" class="rule-bar">
@@ -454,6 +488,9 @@
     const ctx = canvas.getContext("2d");
     canvas.width = CONFIG.COLS * CONFIG.CELL_SIZE;
     canvas.height = CONFIG.ROWS * CONFIG.CELL_SIZE;
+
+    const nextCanvas = document.getElementById("next-canvas");
+    const nextCtx = nextCanvas.getContext("2d");
 
     // 横3コマ mini_icon.png の読み込み確認（失敗時のみ絵文字フォールバック）
     const ruleBarEl = document.getElementById("rule-bar");
@@ -745,6 +782,8 @@
     let grid = [];
     // 落下中ピース（1個）: { r, c, color, stage }
     let activePiece = null;
+    // 次のピース: { color, stage } | null
+    let nextPiece = null;
     let score = 0;
     let currentChain = 0;
     let isStarted = false;
@@ -768,6 +807,42 @@
       } else {
         hudTimerEl.classList.remove("show");
       }
+    }
+
+    function drawNextPreview() {
+      nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+      if (!nextPiece) return;
+
+      const { color, stage } = nextPiece;
+      const size = nextCanvas.width;
+
+      if (spriteLoaded[color]) {
+        const chipIndex = Math.max(0, stage - 1);
+        const sx = chipIndex * CONFIG.CHIP_SIZE;
+        nextCtx.imageSmoothingEnabled = false;
+        nextCtx.drawImage(
+          spriteImages[color],
+          sx,
+          0,
+          CONFIG.CHIP_SIZE,
+          CONFIG.CHIP_SIZE,
+          0,
+          0,
+          size,
+          size
+        );
+        return;
+      }
+
+      nextCtx.fillStyle = CONFIG.FALLBACK_BG[color] || "#e4e4e7";
+      nextCtx.beginPath();
+      nextCtx.roundRect(2, 2, size - 4, size - 4, 6);
+      nextCtx.fill();
+
+      nextCtx.font = `${Math.floor(size * 0.62)}px "${CONFIG.FONT_NAME}", system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
+      nextCtx.textAlign = "center";
+      nextCtx.textBaseline = "middle";
+      nextCtx.fillText(CONFIG.EMOJI[stage] || "?", size / 2, size / 2 + 1);
     }
 
     function triggerGameOver(headingText = "gameover") {
@@ -818,13 +893,19 @@
 
     function spawnPiece() {
       if (isGameOver) return;
+      if (!nextPiece) {
+        nextPiece = pickRandomBlock();
+      }
+      const chosen = nextPiece;
+      nextPiece = pickRandomBlock();
+      drawNextPreview();
+
       const spawnCol = Math.floor(CONFIG.COLS / 2);
-      const nextBlock = pickRandomBlock();
       const piece = {
         r: 0,
         c: spawnCol,
-        color: nextBlock.color,
-        stage: nextBlock.stage,
+        color: chosen.color,
+        stage: chosen.stage,
       };
 
       if (!isCellFree(piece.r, piece.c)) {
@@ -1099,6 +1180,7 @@
       }
 
       drawEffects();
+      drawNextPreview();
     }
 
     function loop(timestamp) {
@@ -1151,6 +1233,8 @@
       grid = createEmptyGrid();
       effects = [];
       activePiece = null;
+      nextPiece = pickRandomBlock();
+      drawNextPreview();
       score = 0;
       currentChain = 0;
       remainingMs = CONFIG.FIVE_MINUTES_MS;
@@ -1229,11 +1313,13 @@
       shareToX();
     }
 
-    function resetGame(autoStart = false, mode = gameMode) {
-      gameMode = mode === "5min" ? "5min" : "normal";
+    function initTitleScreen() {
+      gameMode = "normal";
       grid = createEmptyGrid();
       effects = [];
       activePiece = null;
+      nextPiece = pickRandomBlock();
+      drawNextPreview();
       score = 0;
       currentChain = 0;
       remainingMs = CONFIG.FIVE_MINUTES_MS;
@@ -1246,17 +1332,12 @@
       chainEl.textContent = "0";
       updateTimerDisplay();
       gameoverEl.classList.remove("show");
-
-      if (autoStart) {
-        startWithMode(gameMode);
-      } else {
-        stopBgm();
-        isStarted = false;
-        overlayHeadingEl.textContent = "たまごひよこにわとり";
-        startDescEl.style.display = "flex";
-        modeSelectStartEl.style.display = "flex";
-        startScreenEl.classList.add("show");
-      }
+      stopBgm();
+      isStarted = false;
+      overlayHeadingEl.textContent = "たまごひよこにわとり";
+      startDescEl.style.display = "flex";
+      modeSelectStartEl.style.display = "flex";
+      startScreenEl.classList.add("show");
     }
 
     // ページ表示時に裏側でBGMデコードを先読みしておく
@@ -1323,15 +1404,12 @@
         if (!activePiece) return;
         e.preventDefault();
         dropToColumn(activePiece.c);
-      } else if (e.key === "r" || e.key === "R") {
-        resetGame(true, gameMode);
       }
     });
 
     document.getElementById("btn-left").addEventListener("click", () => movePiece(0, -1));
     document.getElementById("btn-down").addEventListener("click", () => hardDrop());
     document.getElementById("btn-right").addEventListener("click", () => movePiece(0, 1));
-    document.getElementById("btn-reset").addEventListener("click", () => resetGame(false, gameMode));
     document.getElementById("btn-retry-normal").addEventListener("click", () => startWithMode("normal"));
     document.getElementById("btn-retry-5min").addEventListener("click", () => startWithMode("5min"));
     document.getElementById("btn-share-x").addEventListener("click", shareToX);
@@ -1346,7 +1424,8 @@
       dropToColumn(clickedCol);
     });
 
-    resetGame(false, "normal");
+    // 起動（スタート画面から待機）
+    initTitleScreen();
     requestAnimationFrame(loop);
   </script>
 </body>
