@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>たまごひよこにわとり</title>
+  <link rel="icon" type="image/png" href="icon.png" />
+  <link rel="apple-touch-icon" href="icon.png" />
+  <style>
+    @font-face {
+      font-family: "MisakiGothic";
+      src: url("misaki_gothic_2nd.ttf") format("truetype");
+      font-display: swap;
+    }
+
+    :root {
+      --bg: #18181b;
+      --panel: #27272a;
+      --board-bg: #111114;
+      --grid-line: #27272a;
+      --text: #f4f4f5;
+      --muted: #a1a1aa;
+      --accent: #facc15;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      position: relative;
+      margin: 0;
+      min-height: 100dvh;
+      /* back.png（1コマ）を横にリピート（単色なし・移動なし・中央配置） */
+      background-color: transparent;
+      background-image: url("back.png");
+      background-size: auto 100%;
+      background-repeat: repeat-x;
+      background-position: center;
+      color: var(--text);
+      font-family: "MisakiGothic", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 12px;
+      gap: 10px;
+      overflow-x: hidden;
+    }
+
+    .hud {
+      width: 100%;
+      max-width: 360px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--panel);
+      padding: 8px 14px;
+      border-radius: 12px;
+      font-size: 14px;
+      gap: 6px;
+    }
+
+    .hud-item strong {
+      font-size: 18px;
+      color: var(--accent);
+      margin-left: 4px;
+    }
+
+    .rule-bar {
+      width: 100%;
+      max-width: 360px;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      background: var(--panel);
+      padding: 6px 10px;
+      border-radius: 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .rule-step {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    /* mini_icon.png（横3コマ）を1コマずつ表示するアイコン */
+    .mini-icon {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      vertical-align: middle;
+      background-image: url("mini_icon.png");
+      background-size: 300% 100%;
+      background-repeat: no-repeat;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    .mini-icon[data-frame="0"] {
+      background-position: 0% 0%;
+    }
+
+    .mini-icon[data-frame="1"] {
+      background-position: 50% 0%;
+    }
+
+    .mini-icon[data-frame="2"] {
+      background-position: 100% 0%;
+    }
+
+    .mini-icon-fallback {
+      display: none;
+      font-size: 13px;
+      line-height: 1;
+    }
+
+    .rule-bar.is-fallback .mini-icon {
+      display: none;
+    }
+
+    .rule-bar.is-fallback .mini-icon-fallback {
+      display: inline;
+    }
+
+    /* 両方の盤面（PC・スマホ共通）の背景に back.png（1コマ）を25%表示 */
+    .stage-wrap {
+      position: relative;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 2px solid #3f3f46;
+      background-color: var(--board-bg);
+      background-image: url("back.png");
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      touch-action: manipulation;
+    }
+
+    .stage-wrap::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(17, 17, 20, 0.75);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    canvas {
+      position: relative;
+      z-index: 1;
+      display: block;
+      background: transparent;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      cursor: pointer;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      background: rgba(0, 0, 0, 0.8);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .overlay.show {
+      display: flex;
+    }
+
+    .start-title {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: var(--accent);
+    }
+
+    .start-desc {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--text);
+    }
+
+    .start-desc .sub {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .start-prompt {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      padding: 8px 14px;
+      border: 1px solid #52525b;
+      border-radius: 8px;
+      background: rgba(39, 39, 42, 0.85);
+    }
+
+    .gameover-title {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+
+    .gameover-score {
+      font-size: 15px;
+      color: var(--muted);
+    }
+
+    .gameover-score strong {
+      font-size: 26px;
+      color: var(--accent);
+      margin: 0 2px;
+    }
+
+    .gameover-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+      max-width: 220px;
+      margin-top: 4px;
+    }
+
+    button {
+      background: #3f3f46;
+      color: var(--text);
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    button:active {
+      transform: scale(0.96);
+      background: #52525b;
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: #18181b;
+    }
+
+    button.share-btn {
+      background: #000000;
+      color: #ffffff;
+      border: 1px solid #52525b;
+    }
+
+    button.share-btn:active {
+      background: #27272a;
+    }
+
+    .controls {
+      width: 100%;
+      max-width: 360px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <div class="hud-item">SCORE<strong><span id="score">0</span></strong></div>
+    <div class="hud-item">CHAIN<strong><span id="chain">0</span></strong></div>
+    <button id="btn-reset" type="button">リセット</button>
+  </div>
+
+  <div id="rule-bar" class="rule-bar">
+    <span class="rule-step">
+      <span class="mini-icon" data-frame="0" aria-hidden="true"></span>
+      <span class="mini-icon-fallback">🥚</span>×2 →
+      <span class="mini-icon" data-frame="1" aria-hidden="true"></span>
+      <span class="mini-icon-fallback">🐣</span>
+    </span>
+    <span class="rule-step">
+      <span class="mini-icon" data-frame="1" aria-hidden="true"></span>
+      <span class="mini-icon-fallback">🐣</span>×3 →
+      <span class="mini-icon" data-frame="2" aria-hidden="true"></span>
+      <span class="mini-icon-fallback">🐔</span>
+    </span>
+    <span class="rule-step">
+      <span class="mini-icon" data-frame="2" aria-hidden="true"></span>
+      <span class="mini-icon-fallback">🐔</span>×4 → 消去
+    </span>
+    <span>タップで投下</span>
+  </div>
+
+  <div class="stage-wrap">
+    <canvas id="board"></canvas>
+    <div id="start-screen" class="overlay show">
+      <div id="overlay-heading" class="start-title">たまごひよこにわとり</div>
+      <div id="start-desc" class="start-desc">
+        <span>同じ色を繋げよう！</span>
+        <span class="sub">Let's connect the same colors!</span>
+      </div>
+      <div class="start-prompt">Tap or SpaceKey</div>
+    </div>
+    <div id="gameover" class="overlay">
+      <div class="gameover-title">gameover</div>
+      <div class="gameover-score">スコア: <strong><span id="final-score">0</span></strong> 点</div>
+      <div class="gameover-actions">
+        <button id="btn-share-x" class="share-btn" type="button">Xで共有</button>
+        <button id="btn-share-native" class="share-btn" type="button">共有</button>
+        <button id="btn-retry" class="primary" type="button">もう一回</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="btn-left" type="button">←</button>
+    <button id="btn-down" type="button">↓</button>
+    <button id="btn-right" type="button">→</button>
+  </div>
+
+  <script>
+    // ==========================================
+    // 自分で改造しやすい設定値（ここを書き換えて遊べます）
+    // ==========================================
+    const CONFIG = {
+      COLS: 7,
+      ROWS: 12,
+      CELL_SIZE: 48,
+      FALL_INTERVAL_MS: 750,
+      GROUP_CLEAR_MS: 120, // グループごとに順番処理する間隔（ms）
+      CHAIN_BONUS_UNIT: 500, // Chain * 500 - 500 の追加ボーナス基準値
+      FONT_SRC: "misaki_gothic_2nd.ttf",
+      FONT_NAME: "MisakiGothic",
+      // ルールバー用ミニアイコン（横3コマ: 0=卵, 1=ひよこ, 2=鶏）
+      MINI_ICON_SRC: "mini_icon.png",
+      MINI_ICON_FRAMES: 3,
+      // 消去・変化時エフェクト（64x16 の横4コマ＝16x16×4枚）
+      EFFECT_SRC: "effect.png",
+      EFFECT_FRAMES: 4,
+      EFFECT_CHIP_SIZE: 16,
+      EFFECT_FRAME_MS: 60,
+      // BGMファイル（.mp3）と音量（0.0〜1.0）
+      BGM_SRC: "bgm.mp3",
+      BGM_VOLUME: 0.75,
+      // ループ位置の微調整（秒）。null なら曲の最初／最後までループ
+      BGM_LOOP_START: 0,
+      BGM_LOOP_END: null,
+      // 効果音ファイル（.wav）
+      SOUNDS: {
+        egg: "egg.wav",
+        chick: "chick.wav",
+        chicken: "chicken.wav",
+        gameover: "gameover.wav",
+        drop: "drop.wav",
+      },
+      // 段階（1=卵, 2=ひよこ, 3=鶏）に対応する効果音キー
+      STAGE_SOUND: {
+        1: "egg",
+        2: "chick",
+        3: "chicken",
+      },
+      // 各色スプライトシート（それぞれ 48x16 の画像を 16x16 チップ3枚として扱う）
+      SPRITES: {
+        yellow: "Yellow.png",
+        magenta: "Magenta.png",
+        cyan: "Cyan.png",
+      },
+      COLORS: ["yellow", "magenta", "cyan"],
+      CHIP_SIZE: 16,
+      // 段階: 1=卵, 2=ひよこ, 3=鶏
+      MATCH_COUNTS: {
+        1: 2,
+        2: 3,
+        3: 4,
+      },
+      // 条件達成時の変化先（0は消去、1〜3は指定段階へ変化。色は維持）
+      NEXT_STAGE: {
+        1: 2,
+        2: 3,
+        3: 0,
+      },
+      // 落下ピースの出現ウェイト（段階・色）
+      STAGE_WEIGHTS: {
+        1: 5, // 卵
+        2: 3, // ひよこ
+        3: 2, // 鶏
+      },
+      COLOR_WEIGHTS: {
+        yellow: 1,
+        magenta: 1,
+        cyan: 1,
+      },
+      EMOJI: {
+        1: "🥚",
+        2: "🐣",
+        3: "🐔",
+      },
+      FALLBACK_BG: {
+        yellow: "#fef08a",
+        magenta: "#f5d0fe",
+        cyan: "#a5f3fc",
+      },
+    };
+
+    const canvas = document.getElementById("board");
+    const ctx = canvas.getContext("2d");
+    canvas.width = CONFIG.COLS * CONFIG.CELL_SIZE;
+    canvas.height = CONFIG.ROWS * CONFIG.CELL_SIZE;
+
+    // 横3コマ mini_icon.png の読み込み確認（失敗時のみ絵文字フォールバック）
+    const ruleBarEl = document.getElementById("rule-bar");
+    const miniIconCheck = new Image();
+    miniIconCheck.onload = () => {
+      ruleBarEl.classList.remove("is-fallback");
+    };
+    miniIconCheck.onerror = () => {
+      ruleBarEl.classList.add("is-fallback");
+    };
+    miniIconCheck.src = CONFIG.MINI_ICON_SRC;
+
+    // 64x16 横4コマ effect.png の読み込み
+    const effectImg = new Image();
+    let effectLoaded = false;
+    effectImg.onload = () => {
+      effectLoaded = true;
+    };
+    effectImg.src = CONFIG.EFFECT_SRC;
+
+    // 再生中のエフェクトリスト: { r, c, elapsedMs }
+    let effects = [];
+
+    function spawnEffectsForCells(cells) {
+      for (const pos of cells) {
+        effects.push({
+          r: pos.r,
+          c: pos.c,
+          elapsedMs: 0,
+        });
+      }
+    }
+
+    function updateEffects(dt) {
+      if (effects.length === 0) return;
+      const totalDuration = CONFIG.EFFECT_FRAMES * CONFIG.EFFECT_FRAME_MS;
+      for (const fx of effects) {
+        fx.elapsedMs += dt;
+      }
+      effects = effects.filter((fx) => fx.elapsedMs < totalDuration);
+    }
+
+    function drawEffects() {
+      if (!effectLoaded || effects.length === 0) return;
+      const frameW = effectImg.naturalWidth
+        ? effectImg.naturalWidth / CONFIG.EFFECT_FRAMES
+        : CONFIG.EFFECT_CHIP_SIZE;
+      const frameH = effectImg.naturalHeight || CONFIG.EFFECT_CHIP_SIZE;
+
+      ctx.imageSmoothingEnabled = false;
+      for (const fx of effects) {
+        if (fx.r < 0) continue;
+        const frameIndex = Math.min(
+          CONFIG.EFFECT_FRAMES - 1,
+          Math.max(0, Math.floor(fx.elapsedMs / CONFIG.EFFECT_FRAME_MS))
+        );
+        const sx = frameIndex * frameW;
+        const dx = fx.c * CONFIG.CELL_SIZE;
+        const dy = fx.r * CONFIG.CELL_SIZE;
+        ctx.drawImage(
+          effectImg,
+          sx,
+          0,
+          frameW,
+          frameH,
+          dx,
+          dy,
+          CONFIG.CELL_SIZE,
+          CONFIG.CELL_SIZE
+        );
+      }
+    }
+
+    // ==========================================
+    // 自然なループ再生用のBGM制御（Web Audio API + HTMLAudio フォールバック）
+    // ==========================================
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext || null;
+    let audioCtx = null;
+    let gainNode = null;
+    let bgmBuffer = null;
+    let bgmSource = null;
+    let bgmBufferLoading = false;
+    let bgmOffsetSec = CONFIG.BGM_LOOP_START || 0;
+    let bgmStartedAtCtxTime = 0;
+    let bgmShouldPlay = false;
+
+    // フォールバック用 HTMLAudio
+    const fallbackBgm = new Audio(CONFIG.BGM_SRC);
+    fallbackBgm.preload = "auto";
+    fallbackBgm.volume = CONFIG.BGM_VOLUME;
+    fallbackBgm.load();
+    fallbackBgm.addEventListener("timeupdate", () => {
+      const loopStart = Math.max(0, CONFIG.BGM_LOOP_START || 0);
+      const loopEnd = CONFIG.BGM_LOOP_END ?? (Number.isFinite(fallbackBgm.duration) ? fallbackBgm.duration : null);
+      if (loopEnd && fallbackBgm.currentTime >= loopEnd - 0.02) {
+        fallbackBgm.currentTime = loopStart;
+      }
+    });
+    fallbackBgm.addEventListener("ended", () => {
+      if (!bgmShouldPlay || isPaused || isGameOver) return;
+      fallbackBgm.currentTime = Math.max(0, CONFIG.BGM_LOOP_START || 0);
+      fallbackBgm.play().catch(() => {});
+    });
+
+    async function loadBgmBuffer() {
+      if (!AudioContextClass || bgmBuffer || bgmBufferLoading) return;
+      bgmBufferLoading = true;
+      try {
+        const res = await fetch(CONFIG.BGM_SRC);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const arrayBuf = await res.arrayBuffer();
+        const tempCtx = audioCtx || new AudioContextClass();
+        bgmBuffer = await tempCtx.decodeAudioData(arrayBuf);
+      } catch (_) {
+        // file:// 制限や未配置時は fallbackBgm を使用
+        bgmBuffer = null;
+      } finally {
+        bgmBufferLoading = false;
+      }
+    }
+
+    function getLoopBounds() {
+      const duration = bgmBuffer ? bgmBuffer.duration : 0;
+      const start = Math.max(0, Math.min(CONFIG.BGM_LOOP_START || 0, Math.max(0, duration - 0.05)));
+      const rawEnd = CONFIG.BGM_LOOP_END ?? duration;
+      const end = duration > 0 ? Math.max(start + 0.05, Math.min(rawEnd, duration)) : duration;
+      return { start, end };
+    }
+
+    function stopWebAudioSource(savePosition = false) {
+      if (!bgmSource) return;
+      if (savePosition && audioCtx && bgmBuffer) {
+        const { start, end } = getLoopBounds();
+        const elapsed = Math.max(0, audioCtx.currentTime - bgmStartedAtCtxTime);
+        const loopSpan = Math.max(0.05, end - start);
+        bgmOffsetSec = start + ((bgmOffsetSec - start + elapsed) % loopSpan);
+      }
+      try {
+        bgmSource.stop();
+      } catch (_) {}
+      bgmSource.disconnect();
+      bgmSource = null;
+    }
+
+    function startWebAudioBgm() {
+      if (!AudioContextClass || !bgmBuffer) return false;
+      if (!audioCtx) {
+        audioCtx = new AudioContextClass();
+        gainNode = audioCtx.createGain();
+        gainNode.connect(audioCtx.destination);
+      }
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume().catch(() => {});
+      }
+      gainNode.gain.setValueAtTime(CONFIG.BGM_VOLUME, audioCtx.currentTime);
+
+      stopWebAudioSource(false);
+
+      const { start, end } = getLoopBounds();
+      const offset = Math.max(start, Math.min(bgmOffsetSec, Math.max(start, end - 0.02)));
+
+      const src = audioCtx.createBufferSource();
+      src.buffer = bgmBuffer;
+      src.loop = true;
+      src.loopStart = start;
+      src.loopEnd = end;
+      src.connect(gainNode);
+      src.start(0, offset);
+
+      bgmSource = src;
+      bgmStartedAtCtxTime = audioCtx.currentTime;
+      bgmOffsetSec = offset;
+      return true;
+    }
+
+    function playBgm({ restart = false } = {}) {
+      bgmShouldPlay = true;
+      loadBgmBuffer();
+
+      if (restart) {
+        bgmOffsetSec = Math.max(0, CONFIG.BGM_LOOP_START || 0);
+        fallbackBgm.currentTime = bgmOffsetSec;
+      }
+
+      if (bgmBuffer && startWebAudioBgm()) {
+        fallbackBgm.pause();
+        return;
+      }
+
+      fallbackBgm.volume = CONFIG.BGM_VOLUME;
+      fallbackBgm.play().catch(() => {});
+    }
+
+    function pauseBgm() {
+      stopWebAudioSource(true);
+      fallbackBgm.pause();
+    }
+
+    function stopBgm() {
+      bgmShouldPlay = false;
+      stopWebAudioSource(false);
+      bgmOffsetSec = Math.max(0, CONFIG.BGM_LOOP_START || 0);
+      fallbackBgm.pause();
+      fallbackBgm.currentTime = bgmOffsetSec;
+    }
+
+    function ensureBgmPlaying() {
+      if (!bgmShouldPlay || isPaused || isGameOver) return;
+      if (audioCtx && audioCtx.state === "suspended") {
+        audioCtx.resume().catch(() => {});
+      }
+      if (!bgmSource && bgmBuffer) {
+        startWebAudioBgm();
+        return;
+      }
+      if (!bgmSource && fallbackBgm.paused) {
+        fallbackBgm.volume = CONFIG.BGM_VOLUME;
+        fallbackBgm.play().catch(() => {});
+      }
+    }
+
+    // 効果音オーディオの読み込み
+    const soundAudios = {};
+    for (const [key, src] of Object.entries(CONFIG.SOUNDS)) {
+      const audio = new Audio(src);
+      audio.preload = "auto";
+      soundAudios[key] = audio;
+    }
+
+    function playSound(key) {
+      const base = soundAudios[key];
+      if (!base) return;
+      const clone = base.cloneNode();
+      clone.play().catch(() => {
+        // 未操作状態でのブロックやファイル未配置時は無視
+      });
+    }
+
+    // FontFace API でも美咲ゴシックを明示的にロード（Canvas描画用）
+    if ("FontFace" in window) {
+      const fontFace = new FontFace(CONFIG.FONT_NAME, `url("${CONFIG.FONT_SRC}")`);
+      fontFace.load().then((loadedFace) => {
+        document.fonts.add(loadedFace);
+      }).catch(() => {
+        // 読み込み失敗時はCSS / フォールバックフォントで継続
+      });
+    }
+
+    // 色ごとのスプライト画像を読み込み
+    const spriteImages = {};
+    const spriteLoaded = {};
+    for (const color of CONFIG.COLORS) {
+      spriteLoaded[color] = false;
+      const img = new Image();
+      img.onload = () => {
+        spriteLoaded[color] = true;
+      };
+      img.src = CONFIG.SPRITES[color];
+      spriteImages[color] = img;
+    }
+
+    const scoreEl = document.getElementById("score");
+    const chainEl = document.getElementById("chain");
+    const finalScoreEl = document.getElementById("final-score");
+    const startScreenEl = document.getElementById("start-screen");
+    const overlayHeadingEl = document.getElementById("overlay-heading");
+    const startDescEl = document.getElementById("start-desc");
+    const gameoverEl = document.getElementById("gameover");
+
+    // 盤面セルは null または { color: "yellow"|"magenta"|"cyan", stage: 1|2|3 }
+    let grid = [];
+    // 落下中ピース（1個）: { r, c, color, stage }
+    let activePiece = null;
+    let score = 0;
+    let currentChain = 0;
+    let isStarted = false;
+    let isPaused = false;
+    let isGameOver = false;
+    let isBusy = false; // 変化・消去・落下処理中フラグ
+    let fallTimer = 0;
+    let lastTime = 0;
+
+    function canPlay() {
+      return isStarted && !isPaused && !isGameOver && !isBusy;
+    }
+
+    function createEmptyGrid() {
+      return Array.from({ length: CONFIG.ROWS }, () =>
+        Array.from({ length: CONFIG.COLS }, () => null)
+      );
+    }
+
+    function pickWeightedKey(weightMap, fallback) {
+      const entries = Object.entries(weightMap);
+      const total = entries.reduce((sum, [, w]) => sum + w, 0);
+      let r = Math.random() * total;
+      for (const [key, weight] of entries) {
+        r -= weight;
+        if (r <= 0) return key;
+      }
+      return fallback;
+    }
+
+    function pickRandomBlock() {
+      return {
+        color: pickWeightedKey(CONFIG.COLOR_WEIGHTS, "yellow"),
+        stage: Number(pickWeightedKey(CONFIG.STAGE_WEIGHTS, "1")),
+      };
+    }
+
+    function isCellFree(r, c) {
+      if (c < 0 || c >= CONFIG.COLS) return false;
+      if (r >= CONFIG.ROWS) return false;
+      if (r >= 0 && grid[r][c] !== null) return false;
+      return true;
+    }
+
+    function spawnPiece() {
+      const spawnCol = Math.floor(CONFIG.COLS / 2);
+      const nextBlock = pickRandomBlock();
+      const piece = {
+        r: 0,
+        c: spawnCol,
+        color: nextBlock.color,
+        stage: nextBlock.stage,
+      };
+
+      if (!isCellFree(piece.r, piece.c)) {
+        isGameOver = true;
+        stopBgm();
+        finalScoreEl.textContent = score;
+        gameoverEl.classList.add("show");
+        playSound("gameover");
+        activePiece = null;
+        return;
+      }
+
+      activePiece = piece;
+      currentChain = 0;
+      chainEl.textContent = currentChain;
+    }
+
+    function movePiece(dr, dc) {
+      if (!canPlay() || !activePiece) return false;
+      const nr = activePiece.r + dr;
+      const nc = activePiece.c + dc;
+      if (isCellFree(nr, nc)) {
+        activePiece.r = nr;
+        activePiece.c = nc;
+        return true;
+      }
+      return false;
+    }
+
+    // 現在の列の一番下まで一気に落として固定する（ハードドロップ）
+    function hardDrop() {
+      if (!canPlay() || !activePiece) return;
+      while (isCellFree(activePiece.r + 1, activePiece.c)) {
+        activePiece.r += 1;
+      }
+      lockPiece();
+    }
+
+    // 指定した列に移動し、その列の着地できる一番下まで落として固定する
+    function dropToColumn(targetCol) {
+      if (!canPlay() || !activePiece) return;
+      const col = Math.max(0, Math.min(CONFIG.COLS - 1, targetCol));
+
+      if (isCellFree(activePiece.r, col)) {
+        activePiece.c = col;
+      }
+
+      hardDrop();
+    }
+
+    function lockPiece() {
+      if (!activePiece) return;
+      const { r, c, color, stage } = activePiece;
+      if (r >= 0 && r < CONFIG.ROWS && c >= 0 && c < CONFIG.COLS) {
+        grid[r][c] = { color, stage };
+      }
+      playSound("drop");
+      activePiece = null;
+      resolveBoardLoop();
+    }
+
+    function applyGravity() {
+      let moved = false;
+      for (let c = 0; c < CONFIG.COLS; c++) {
+        let writeRow = CONFIG.ROWS - 1;
+        for (let r = CONFIG.ROWS - 1; r >= 0; r--) {
+          const val = grid[r][c];
+          if (val !== null) {
+            if (writeRow !== r) {
+              grid[writeRow][c] = val;
+              grid[r][c] = null;
+              moved = true;
+            }
+            writeRow--;
+          }
+        }
+      }
+      return moved;
+    }
+
+    // 色（color）と段階（stage）の両方が一致する連結グループを検出し、左下基準でソートして返す
+    function findMatchedGroups() {
+      const visited = Array.from({ length: CONFIG.ROWS }, () =>
+        Array.from({ length: CONFIG.COLS }, () => false)
+      );
+      const matchedGroups = [];
+      const dirs = [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ];
+
+      for (let r = 0; r < CONFIG.ROWS; r++) {
+        for (let c = 0; c < CONFIG.COLS; c++) {
+          const cell = grid[r][c];
+          if (!cell || visited[r][c]) continue;
+
+          const { color, stage } = cell;
+          const queue = [{ r, c }];
+          const cells = [];
+          visited[r][c] = true;
+
+          while (queue.length > 0) {
+            const cur = queue.shift();
+            cells.push(cur);
+            for (const [dr, dc] of dirs) {
+              const nr = cur.r + dr;
+              const nc = cur.c + dc;
+              if (
+                nr >= 0 &&
+                nr < CONFIG.ROWS &&
+                nc >= 0 &&
+                nc < CONFIG.COLS &&
+                !visited[nr][nc]
+              ) {
+                const neighbor = grid[nr][nc];
+                if (neighbor && neighbor.color === color && neighbor.stage === stage) {
+                  visited[nr][nc] = true;
+                  queue.push({ r: nr, c: nc });
+                }
+              }
+            }
+          }
+
+          const threshold = CONFIG.MATCH_COUNTS[stage] ?? 99;
+          if (cells.length >= threshold) {
+            // グループの中で一番左下にあるセル（r が最大、同 r なら c が最小）を基準にする
+            let anchor = cells[0];
+            for (const pos of cells) {
+              if (pos.r > anchor.r || (pos.r === anchor.r && pos.c < anchor.c)) {
+                anchor = pos;
+              }
+            }
+            matchedGroups.push({
+              color,
+              stage,
+              nextStage: CONFIG.NEXT_STAGE[stage] ?? 0,
+              cells,
+              anchor,
+            });
+          }
+        }
+      }
+
+      // 左下から順（anchor.r が大きい順＝下から上、同じ r なら anchor.c が小さい順＝左から右）
+      matchedGroups.sort((a, b) => {
+        if (b.anchor.r !== a.anchor.r) return b.anchor.r - a.anchor.r;
+        return a.anchor.c - b.anchor.c;
+      });
+
+      return matchedGroups;
+    }
+
+    const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+
+    async function resolveBoardLoop() {
+      isBusy = true;
+      while (true) {
+        applyGravity();
+        await sleep(90);
+
+        const groups = findMatchedGroups();
+        if (groups.length === 0) break;
+
+        currentChain += 1;
+        chainEl.textContent = currentChain;
+
+        // 連鎖ごとの追加スコア（Chain * 500 - 500）
+        const chainBonus = Math.max(0, currentChain * CONFIG.CHAIN_BONUS_UNIT - CONFIG.CHAIN_BONUS_UNIT);
+        score += chainBonus;
+        scoreEl.textContent = score;
+
+        for (const group of groups) {
+          const soundKey = CONFIG.STAGE_SOUND[group.stage];
+          if (soundKey) playSound(soundKey);
+
+          // 消去・変化時に effect.png を再生
+          spawnEffectsForCells(group.cells);
+
+          for (const pos of group.cells) {
+            grid[pos.r][pos.c] =
+              group.nextStage === 0 ? null : { color: group.color, stage: group.nextStage };
+          }
+          score += group.cells.length * 10 * currentChain;
+          scoreEl.textContent = score;
+
+          await sleep(CONFIG.GROUP_CLEAR_MS);
+        }
+
+        await sleep(80);
+      }
+      isBusy = false;
+      if (!isGameOver) {
+        spawnPiece();
+      }
+    }
+
+    function stepFall() {
+      if (!canPlay() || !activePiece) return;
+      if (!movePiece(1, 0)) {
+        lockPiece();
+      }
+    }
+
+    function drawCell(r, c, block) {
+      if (!block || r < 0) return;
+      const x = c * CONFIG.CELL_SIZE;
+      const y = r * CONFIG.CELL_SIZE;
+      const { color, stage } = block;
+
+      if (spriteLoaded[color]) {
+        const chipIndex = Math.max(0, stage - 1);
+        const sx = chipIndex * CONFIG.CHIP_SIZE;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(
+          spriteImages[color],
+          sx,
+          0,
+          CONFIG.CHIP_SIZE,
+          CONFIG.CHIP_SIZE,
+          x,
+          y,
+          CONFIG.CELL_SIZE,
+          CONFIG.CELL_SIZE
+        );
+        return;
+      }
+
+      const pad = 3;
+      ctx.fillStyle = CONFIG.FALLBACK_BG[color] || "#e4e4e7";
+      ctx.beginPath();
+      ctx.roundRect(x + pad, y + pad, CONFIG.CELL_SIZE - pad * 2, CONFIG.CELL_SIZE - pad * 2, 8);
+      ctx.fill();
+
+      ctx.font = `${Math.floor(CONFIG.CELL_SIZE * 0.62)}px "${CONFIG.FONT_NAME}", system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(CONFIG.EMOJI[stage] || "?", x + CONFIG.CELL_SIZE / 2, y + CONFIG.CELL_SIZE / 2 + 1);
+    }
+
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // グリッド線
+      ctx.strokeStyle = "#27272a";
+      ctx.lineWidth = 1;
+      for (let r = 0; r <= CONFIG.ROWS; r++) {
+        ctx.beginPath();
+        ctx.moveTo(0, r * CONFIG.CELL_SIZE);
+        ctx.lineTo(canvas.width, r * CONFIG.CELL_SIZE);
+        ctx.stroke();
+      }
+      for (let c = 0; c <= CONFIG.COLS; c++) {
+        ctx.beginPath();
+        ctx.moveTo(c * CONFIG.CELL_SIZE, 0);
+        ctx.lineTo(c * CONFIG.CELL_SIZE, canvas.height);
+        ctx.stroke();
+      }
+
+      // 固定ブロック
+      for (let r = 0; r < CONFIG.ROWS; r++) {
+        for (let c = 0; c < CONFIG.COLS; c++) {
+          drawCell(r, c, grid[r][c]);
+        }
+      }
+
+      // 落下中ピース（1個）
+      if (activePiece) {
+        drawCell(activePiece.r, activePiece.c, activePiece);
+      }
+
+      // 消去・変化時エフェクト（横4コマ）
+      drawEffects();
+    }
+
+    function loop(timestamp) {
+      if (!lastTime) lastTime = timestamp;
+      const dt = timestamp - lastTime;
+      lastTime = timestamp;
+
+      updateEffects(dt);
+
+      if (canPlay() && activePiece) {
+        fallTimer += dt;
+        if (fallTimer >= CONFIG.FALL_INTERVAL_MS) {
+          fallTimer = 0;
+          stepFall();
+        }
+      }
+
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    function pauseForBackground() {
+      if (!isStarted || isGameOver || isPaused) return;
+      isPaused = true;
+      pauseBgm();
+      overlayHeadingEl.textContent = "PAUSE";
+      startDescEl.style.display = "none";
+      startScreenEl.classList.add("show");
+    }
+
+    function resumeFromPause() {
+      if (!isPaused) return;
+      isPaused = false;
+      lastTime = 0;
+      startScreenEl.classList.remove("show");
+      playBgm({ restart: false });
+    }
+
+    function startGame() {
+      if (isPaused) {
+        resumeFromPause();
+        return;
+      }
+      if (isStarted) return;
+      isStarted = true;
+      isPaused = false;
+      startScreenEl.classList.remove("show");
+      playBgm({ restart: true });
+      spawnPiece();
+    }
+
+    function getShareUrl() {
+      return location.protocol === "http:" || location.protocol === "https:"
+        ? location.href
+        : "";
+    }
+
+    function buildShareText() {
+      const url = getShareUrl();
+      const lines = [
+        "たまごひよこにわとりをプレイしたよ！",
+        `🐣スコア: ${score}点🐣`,
+        "#たまごひよこにわとり",
+      ];
+      if (url) lines.push(url);
+      return lines.join("\n");
+    }
+
+    function shareToX() {
+      const url = getShareUrl();
+      const text = [
+        "たまごひよこにわとりをプレイしたよ！",
+        `🐣スコア: ${score}点🐣`,
+        "#たまごひよこにわとり",
+      ].join("\n");
+      const params = new URLSearchParams({ text });
+      if (url) {
+        params.set("url", url);
+      }
+      const shareUrl = `https://twitter.com/intent/tweet?${params.toString()}`;
+      window.open(shareUrl, "_blank", "noopener,noreferrer");
+    }
+
+    async function shareNative() {
+      const text = buildShareText();
+      if (navigator.share) {
+        try {
+          await navigator.share({ text });
+          return;
+        } catch (err) {
+          if (err && err.name === "AbortError") return;
+        }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+          await navigator.clipboard.writeText(text);
+          alert("共有テキストをコピーしたよ！");
+          return;
+        } catch (_) {}
+      }
+      shareToX();
+    }
+
+    function resetGame(autoStart = false) {
+      grid = createEmptyGrid();
+      effects = [];
+      activePiece = null;
+      score = 0;
+      currentChain = 0;
+      isGameOver = false;
+      isPaused = false;
+      isBusy = false;
+      fallTimer = 0;
+      scoreEl.textContent = "0";
+      chainEl.textContent = "0";
+      gameoverEl.classList.remove("show");
+
+      if (autoStart) {
+        isStarted = true;
+        startScreenEl.classList.remove("show");
+        playBgm({ restart: true });
+        spawnPiece();
+      } else {
+        stopBgm();
+        isStarted = false;
+        overlayHeadingEl.textContent = "たまごひよこにわとり";
+        startDescEl.style.display = "flex";
+        startScreenEl.classList.add("show");
+      }
+    }
+
+    // ページ表示時に裏側でBGMデコードを先読みしておく
+    loadBgmBuffer();
+
+    // 再生がブロックされた場合でも、次のユーザー操作時に再生を再試行
+    window.addEventListener("pointerdown", ensureBgmPlaying, { passive: true });
+    window.addEventListener("keydown", ensureBgmPlaying, { passive: true });
+
+    // バックグラウンドへ行ったらゲームと音楽を一時停止
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        pauseForBackground();
+      }
+    });
+
+    // すべてのUIボタン押下時に drop.wav を鳴らす
+    document.querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("pointerdown", () => playSound("drop"));
+    });
+
+    // スタート／一時停止画面タップ・クリックで開始・再開
+    startScreenEl.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      startGame();
+    });
+
+    // キーボード操作
+    window.addEventListener("keydown", (e) => {
+      if (isPaused) {
+        if (e.key === " " || e.key === "Enter") {
+          e.preventDefault();
+          resumeFromPause();
+        }
+        return;
+      }
+
+      if (!isStarted) {
+        if (e.key === " " || e.key === "Enter") {
+          e.preventDefault();
+          startGame();
+        }
+        return;
+      }
+
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        movePiece(0, -1);
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        movePiece(0, 1);
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        hardDrop();
+      } else if (e.key === " " || e.key === "Enter") {
+        if (!activePiece) return;
+        e.preventDefault();
+        dropToColumn(activePiece.c);
+      } else if (e.key === "r" || e.key === "R") {
+        resetGame(true);
+      }
+    });
+
+    // ボタン操作
+    document.getElementById("btn-left").addEventListener("click", () => movePiece(0, -1));
+    document.getElementById("btn-down").addEventListener("click", () => hardDrop());
+    document.getElementById("btn-right").addEventListener("click", () => movePiece(0, 1));
+    document.getElementById("btn-reset").addEventListener("click", () => resetGame(false));
+    document.getElementById("btn-retry").addEventListener("click", () => resetGame(true));
+    document.getElementById("btn-share-x").addEventListener("click", shareToX);
+    document.getElementById("btn-share-native").addEventListener("click", shareNative);
+
+    // 盤面タップ／クリックでその列にドロップ
+    canvas.addEventListener("pointerdown", (e) => {
+      if (!canPlay() || !activePiece) return;
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = canvas.width / rect.width;
+      const canvasX = (e.clientX - rect.left) * scaleX;
+      const clickedCol = Math.floor(canvasX / CONFIG.CELL_SIZE);
+      dropToColumn(clickedCol);
+    });
+
+    // 起動（スタート画面から待機）
+    resetGame(false);
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
