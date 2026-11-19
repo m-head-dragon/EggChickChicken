@@ -57,16 +57,24 @@
       justify-content: space-between;
       align-items: center;
       background: var(--panel);
-      padding: 8px 14px;
+      padding: 8px 12px;
       border-radius: 12px;
-      font-size: 14px;
+      font-size: 13px;
       gap: 6px;
     }
 
     .hud-item strong {
-      font-size: 18px;
+      font-size: 16px;
       color: var(--accent);
-      margin-left: 4px;
+      margin-left: 3px;
+    }
+
+    .hud-timer {
+      display: none;
+    }
+
+    .hud-timer.show {
+      display: inline;
     }
 
     .rule-bar {
@@ -164,7 +172,7 @@
       position: absolute;
       inset: 0;
       z-index: 2;
-      background: rgba(0, 0, 0, 0.8);
+      background: rgba(0, 0, 0, 0.82);
       display: none;
       flex-direction: column;
       align-items: center;
@@ -199,14 +207,20 @@
       font-size: 12px;
     }
 
-    .start-prompt {
-      font-size: 16px;
+    .mode-select {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+      max-width: 220px;
+    }
+
+    .mode-btn {
+      width: 100%;
+      padding: 10px 14px;
+      font-size: 15px;
       font-weight: 700;
-      color: var(--text);
-      padding: 8px 14px;
-      border: 1px solid #52525b;
-      border-radius: 8px;
-      background: rgba(39, 39, 42, 0.85);
+      letter-spacing: 0.04em;
     }
 
     .gameover-title {
@@ -232,7 +246,13 @@
       gap: 8px;
       width: 100%;
       max-width: 220px;
-      margin-top: 4px;
+      margin-top: 2px;
+    }
+
+    .retry-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
     }
 
     button {
@@ -240,9 +260,9 @@
       color: var(--text);
       border: none;
       border-radius: 10px;
-      padding: 10px 14px;
+      padding: 9px 12px;
       font-family: inherit;
-      font-size: 15px;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
       text-decoration: none;
@@ -256,6 +276,12 @@
     button.primary {
       background: var(--accent);
       color: #18181b;
+    }
+
+    button.secondary-mode {
+      background: #3f3f46;
+      color: var(--text);
+      border: 1px solid #71717a;
     }
 
     button.share-btn {
@@ -281,6 +307,7 @@
   <div class="hud">
     <div class="hud-item">SCORE<strong><span id="score">0</span></strong></div>
     <div class="hud-item">CHAIN<strong><span id="chain">0</span></strong></div>
+    <div id="hud-timer" class="hud-item hud-timer">TIME<strong><span id="timer">05:00</span></strong></div>
     <button id="btn-reset" type="button">リセット</button>
   </div>
 
@@ -312,15 +339,21 @@
         <span>同じ色を繋げよう！</span>
         <span class="sub">Let's connect the same colors!</span>
       </div>
-      <div class="start-prompt">Tap or SpaceKey</div>
+      <div id="mode-select-start" class="mode-select">
+        <button id="btn-start-normal" class="mode-btn primary" type="button">NORMAL</button>
+        <button id="btn-start-5min" class="mode-btn secondary-mode" type="button">5MINUTES</button>
+      </div>
     </div>
     <div id="gameover" class="overlay">
-      <div class="gameover-title">gameover</div>
+      <div id="gameover-title" class="gameover-title">gameover</div>
       <div class="gameover-score">スコア: <strong><span id="final-score">0</span></strong> 点</div>
       <div class="gameover-actions">
         <button id="btn-share-x" class="share-btn" type="button">Xで共有</button>
         <button id="btn-share-native" class="share-btn" type="button">共有</button>
-        <button id="btn-retry" class="primary" type="button">もう一回</button>
+        <div class="retry-row">
+          <button id="btn-retry-normal" class="primary" type="button">NORMAL</button>
+          <button id="btn-retry-5min" class="secondary-mode" type="button">5MINUTES</button>
+        </div>
       </div>
     </div>
   </div>
@@ -342,6 +375,7 @@
       FALL_INTERVAL_MS: 750,
       GROUP_CLEAR_MS: 120, // グループごとに順番処理する間隔（ms）
       CHAIN_BONUS_UNIT: 500, // Chain * 500 - 500 の追加ボーナス基準値
+      FIVE_MINUTES_MS: 5 * 60 * 1000, // 5MINUTES モードの制限時間（ms）
       FONT_SRC: "misaki_gothic_2nd.ttf",
       FONT_NAME: "MisakiGothic",
       // ルールバー用ミニアイコン（横3コマ: 0=卵, 1=ひよこ, 2=鶏）
@@ -354,6 +388,7 @@
       EFFECT_FRAME_MS: 60,
       // BGMファイル（.mp3）と音量（0.0〜1.0）
       BGM_SRC: "bgm.mp3",
+      BGM_5MIN_SRC: "5minutes_bgm.mp3",
       BGM_VOLUME: 0.75,
       // ループ位置の微調整（秒）。null なら曲の最初／最後までループ
       BGM_LOOP_START: 0,
@@ -498,14 +533,14 @@
     const AudioContextClass = window.AudioContext || window.webkitAudioContext || null;
     let audioCtx = null;
     let gainNode = null;
-    let bgmBuffer = null;
+    let activeBgmSrc = CONFIG.BGM_SRC;
+    const bgmBuffers = {};
+    const bgmLoadingSet = new Set();
     let bgmSource = null;
-    let bgmBufferLoading = false;
     let bgmOffsetSec = CONFIG.BGM_LOOP_START || 0;
     let bgmStartedAtCtxTime = 0;
     let bgmShouldPlay = false;
 
-    // フォールバック用 HTMLAudio
     const fallbackBgm = new Audio(CONFIG.BGM_SRC);
     fallbackBgm.preload = "auto";
     fallbackBgm.volume = CONFIG.BGM_VOLUME;
@@ -523,25 +558,28 @@
       fallbackBgm.play().catch(() => {});
     });
 
-    async function loadBgmBuffer() {
-      if (!AudioContextClass || bgmBuffer || bgmBufferLoading) return;
-      bgmBufferLoading = true;
+    function getBgmSrcForMode(mode) {
+      return mode === "5min" ? CONFIG.BGM_5MIN_SRC : CONFIG.BGM_SRC;
+    }
+
+    async function loadBgmBuffer(srcUrl = activeBgmSrc) {
+      if (!AudioContextClass || !srcUrl || bgmBuffers[srcUrl] || bgmLoadingSet.has(srcUrl)) return;
+      bgmLoadingSet.add(srcUrl);
       try {
-        const res = await fetch(CONFIG.BGM_SRC);
+        const res = await fetch(srcUrl);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const arrayBuf = await res.arrayBuffer();
         const tempCtx = audioCtx || new AudioContextClass();
-        bgmBuffer = await tempCtx.decodeAudioData(arrayBuf);
+        bgmBuffers[srcUrl] = await tempCtx.decodeAudioData(arrayBuf);
       } catch (_) {
-        // file:// 制限や未配置時は fallbackBgm を使用
-        bgmBuffer = null;
+        bgmBuffers[srcUrl] = null;
       } finally {
-        bgmBufferLoading = false;
+        bgmLoadingSet.delete(srcUrl);
       }
     }
 
-    function getLoopBounds() {
-      const duration = bgmBuffer ? bgmBuffer.duration : 0;
+    function getLoopBounds(buffer) {
+      const duration = buffer ? buffer.duration : 0;
       const start = Math.max(0, Math.min(CONFIG.BGM_LOOP_START || 0, Math.max(0, duration - 0.05)));
       const rawEnd = CONFIG.BGM_LOOP_END ?? duration;
       const end = duration > 0 ? Math.max(start + 0.05, Math.min(rawEnd, duration)) : duration;
@@ -550,8 +588,9 @@
 
     function stopWebAudioSource(savePosition = false) {
       if (!bgmSource) return;
-      if (savePosition && audioCtx && bgmBuffer) {
-        const { start, end } = getLoopBounds();
+      const buf = bgmBuffers[activeBgmSrc];
+      if (savePosition && audioCtx && buf) {
+        const { start, end } = getLoopBounds(buf);
         const elapsed = Math.max(0, audioCtx.currentTime - bgmStartedAtCtxTime);
         const loopSpan = Math.max(0.05, end - start);
         bgmOffsetSec = start + ((bgmOffsetSec - start + elapsed) % loopSpan);
@@ -564,7 +603,8 @@
     }
 
     function startWebAudioBgm() {
-      if (!AudioContextClass || !bgmBuffer) return false;
+      const buf = bgmBuffers[activeBgmSrc];
+      if (!AudioContextClass || !buf) return false;
       if (!audioCtx) {
         audioCtx = new AudioContextClass();
         gainNode = audioCtx.createGain();
@@ -577,11 +617,11 @@
 
       stopWebAudioSource(false);
 
-      const { start, end } = getLoopBounds();
+      const { start, end } = getLoopBounds(buf);
       const offset = Math.max(start, Math.min(bgmOffsetSec, Math.max(start, end - 0.02)));
 
       const src = audioCtx.createBufferSource();
-      src.buffer = bgmBuffer;
+      src.buffer = buf;
       src.loop = true;
       src.loopStart = start;
       src.loopEnd = end;
@@ -594,16 +634,21 @@
       return true;
     }
 
-    function playBgm({ restart = false } = {}) {
+    function playBgm({ restart = false, srcUrl = activeBgmSrc } = {}) {
+      const changedSrc = srcUrl !== activeBgmSrc;
+      activeBgmSrc = srcUrl;
       bgmShouldPlay = true;
-      loadBgmBuffer();
+      loadBgmBuffer(activeBgmSrc);
 
-      if (restart) {
+      if (restart || changedSrc) {
         bgmOffsetSec = Math.max(0, CONFIG.BGM_LOOP_START || 0);
+        fallbackBgm.pause();
+        fallbackBgm.src = activeBgmSrc;
+        fallbackBgm.load();
         fallbackBgm.currentTime = bgmOffsetSec;
       }
 
-      if (bgmBuffer && startWebAudioBgm()) {
+      if (bgmBuffers[activeBgmSrc] && startWebAudioBgm()) {
         fallbackBgm.pause();
         return;
       }
@@ -630,7 +675,7 @@
       if (audioCtx && audioCtx.state === "suspended") {
         audioCtx.resume().catch(() => {});
       }
-      if (!bgmSource && bgmBuffer) {
+      if (!bgmSource && bgmBuffers[activeBgmSrc]) {
         startWebAudioBgm();
         return;
       }
@@ -682,11 +727,19 @@
 
     const scoreEl = document.getElementById("score");
     const chainEl = document.getElementById("chain");
+    const hudTimerEl = document.getElementById("hud-timer");
+    const timerEl = document.getElementById("timer");
     const finalScoreEl = document.getElementById("final-score");
     const startScreenEl = document.getElementById("start-screen");
     const overlayHeadingEl = document.getElementById("overlay-heading");
     const startDescEl = document.getElementById("start-desc");
+    const modeSelectStartEl = document.getElementById("mode-select-start");
     const gameoverEl = document.getElementById("gameover");
+    const gameoverTitleEl = document.getElementById("gameover-title");
+
+    // "normal" | "5min"
+    let gameMode = "normal";
+    let remainingMs = CONFIG.FIVE_MINUTES_MS;
 
     // 盤面セルは null または { color: "yellow"|"magenta"|"cyan", stage: 1|2|3 }
     let grid = [];
@@ -700,6 +753,33 @@
     let isBusy = false; // 変化・消去・落下処理中フラグ
     let fallTimer = 0;
     let lastTime = 0;
+
+    function formatTime(ms) {
+      const totalSec = Math.max(0, Math.ceil(ms / 1000));
+      const mins = Math.floor(totalSec / 60);
+      const secs = totalSec % 60;
+      return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+    }
+
+    function updateTimerDisplay() {
+      if (gameMode === "5min") {
+        hudTimerEl.classList.add("show");
+        timerEl.textContent = formatTime(remainingMs);
+      } else {
+        hudTimerEl.classList.remove("show");
+      }
+    }
+
+    function triggerGameOver(headingText = "gameover") {
+      if (isGameOver) return;
+      isGameOver = true;
+      activePiece = null;
+      stopBgm();
+      finalScoreEl.textContent = score;
+      gameoverTitleEl.textContent = headingText;
+      gameoverEl.classList.add("show");
+      playSound("gameover");
+    }
 
     function canPlay() {
       return isStarted && !isPaused && !isGameOver && !isBusy;
@@ -737,6 +817,7 @@
     }
 
     function spawnPiece() {
+      if (isGameOver) return;
       const spawnCol = Math.floor(CONFIG.COLS / 2);
       const nextBlock = pickRandomBlock();
       const piece = {
@@ -747,12 +828,7 @@
       };
 
       if (!isCellFree(piece.r, piece.c)) {
-        isGameOver = true;
-        stopBgm();
-        finalScoreEl.textContent = score;
-        gameoverEl.classList.add("show");
-        playSound("gameover");
-        activePiece = null;
+        triggerGameOver("gameover");
         return;
       }
 
@@ -871,7 +947,6 @@
 
           const threshold = CONFIG.MATCH_COUNTS[stage] ?? 99;
           if (cells.length >= threshold) {
-            // グループの中で一番左下にあるセル（r が最大、同 r なら c が最小）を基準にする
             let anchor = cells[0];
             for (const pos of cells) {
               if (pos.r > anchor.r || (pos.r === anchor.r && pos.c < anchor.c)) {
@@ -889,7 +964,6 @@
         }
       }
 
-      // 左下から順（anchor.r が大きい順＝下から上、同じ r なら anchor.c が小さい順＝左から右）
       matchedGroups.sort((a, b) => {
         if (b.anchor.r !== a.anchor.r) return b.anchor.r - a.anchor.r;
         return a.anchor.c - b.anchor.c;
@@ -903,8 +977,17 @@
     async function resolveBoardLoop() {
       isBusy = true;
       while (true) {
+        if (isGameOver) {
+          isBusy = false;
+          return;
+        }
         applyGravity();
         await sleep(90);
+
+        if (isGameOver) {
+          isBusy = false;
+          return;
+        }
 
         const groups = findMatchedGroups();
         if (groups.length === 0) break;
@@ -912,16 +995,18 @@
         currentChain += 1;
         chainEl.textContent = currentChain;
 
-        // 連鎖ごとの追加スコア（Chain * 500 - 500）
         const chainBonus = Math.max(0, currentChain * CONFIG.CHAIN_BONUS_UNIT - CONFIG.CHAIN_BONUS_UNIT);
         score += chainBonus;
         scoreEl.textContent = score;
 
         for (const group of groups) {
+          if (isGameOver) {
+            isBusy = false;
+            return;
+          }
           const soundKey = CONFIG.STAGE_SOUND[group.stage];
           if (soundKey) playSound(soundKey);
 
-          // 消去・変化時に effect.png を再生
           spawnEffectsForCells(group.cells);
 
           for (const pos of group.cells) {
@@ -988,7 +1073,6 @@
     function render() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // グリッド線
       ctx.strokeStyle = "#27272a";
       ctx.lineWidth = 1;
       for (let r = 0; r <= CONFIG.ROWS; r++) {
@@ -1004,19 +1088,16 @@
         ctx.stroke();
       }
 
-      // 固定ブロック
       for (let r = 0; r < CONFIG.ROWS; r++) {
         for (let c = 0; c < CONFIG.COLS; c++) {
           drawCell(r, c, grid[r][c]);
         }
       }
 
-      // 落下中ピース（1個）
       if (activePiece) {
         drawCell(activePiece.r, activePiece.c, activePiece);
       }
 
-      // 消去・変化時エフェクト（横4コマ）
       drawEffects();
     }
 
@@ -1026,6 +1107,14 @@
       lastTime = timestamp;
 
       updateEffects(dt);
+
+      if (isStarted && !isPaused && !isGameOver && gameMode === "5min") {
+        remainingMs = Math.max(0, remainingMs - dt);
+        updateTimerDisplay();
+        if (remainingMs <= 0) {
+          triggerGameOver("TIME UP");
+        }
+      }
 
       if (canPlay() && activePiece) {
         fallTimer += dt;
@@ -1045,6 +1134,7 @@
       pauseBgm();
       overlayHeadingEl.textContent = "PAUSE";
       startDescEl.style.display = "none";
+      modeSelectStartEl.style.display = "none";
       startScreenEl.classList.add("show");
     }
 
@@ -1053,19 +1143,31 @@
       isPaused = false;
       lastTime = 0;
       startScreenEl.classList.remove("show");
-      playBgm({ restart: false });
+      playBgm({ restart: false, srcUrl: getBgmSrcForMode(gameMode) });
     }
 
-    function startGame() {
-      if (isPaused) {
-        resumeFromPause();
-        return;
-      }
-      if (isStarted) return;
-      isStarted = true;
+    function startWithMode(mode) {
+      gameMode = mode === "5min" ? "5min" : "normal";
+      grid = createEmptyGrid();
+      effects = [];
+      activePiece = null;
+      score = 0;
+      currentChain = 0;
+      remainingMs = CONFIG.FIVE_MINUTES_MS;
+      isGameOver = false;
       isPaused = false;
+      isBusy = false;
+      isStarted = true;
+      fallTimer = 0;
+      lastTime = 0;
+
+      scoreEl.textContent = "0";
+      chainEl.textContent = "0";
+      updateTimerDisplay();
+      gameoverEl.classList.remove("show");
       startScreenEl.classList.remove("show");
-      playBgm({ restart: true });
+
+      playBgm({ restart: true, srcUrl: getBgmSrcForMode(gameMode) });
       spawnPiece();
     }
 
@@ -1077,9 +1179,12 @@
 
     function buildShareText() {
       const url = getShareUrl();
+      const scoreLine = gameMode === "5min"
+        ? `🐔5分間でスコア: ${score}点🐔`
+        : `🐣スコア: ${score}点🐣`;
       const lines = [
         "たまごひよこにわとりをプレイしたよ！",
-        `🐣スコア: ${score}点🐣`,
+        scoreLine,
         "#たまごひよこにわとり",
       ];
       if (url) lines.push(url);
@@ -1088,9 +1193,12 @@
 
     function shareToX() {
       const url = getShareUrl();
+      const scoreLine = gameMode === "5min"
+        ? `🐔5分間でスコア: ${score}点🐔`
+        : `🐣スコア: ${score}点🐣`;
       const text = [
         "たまごひよこにわとりをプレイしたよ！",
-        `🐣スコア: ${score}点🐣`,
+        scoreLine,
         "#たまごひよこにわとり",
       ].join("\n");
       const params = new URLSearchParams({ text });
@@ -1121,60 +1229,70 @@
       shareToX();
     }
 
-    function resetGame(autoStart = false) {
+    function resetGame(autoStart = false, mode = gameMode) {
+      gameMode = mode === "5min" ? "5min" : "normal";
       grid = createEmptyGrid();
       effects = [];
       activePiece = null;
       score = 0;
       currentChain = 0;
+      remainingMs = CONFIG.FIVE_MINUTES_MS;
       isGameOver = false;
       isPaused = false;
       isBusy = false;
       fallTimer = 0;
+      lastTime = 0;
       scoreEl.textContent = "0";
       chainEl.textContent = "0";
+      updateTimerDisplay();
       gameoverEl.classList.remove("show");
 
       if (autoStart) {
-        isStarted = true;
-        startScreenEl.classList.remove("show");
-        playBgm({ restart: true });
-        spawnPiece();
+        startWithMode(gameMode);
       } else {
         stopBgm();
         isStarted = false;
         overlayHeadingEl.textContent = "たまごひよこにわとり";
         startDescEl.style.display = "flex";
+        modeSelectStartEl.style.display = "flex";
         startScreenEl.classList.add("show");
       }
     }
 
     // ページ表示時に裏側でBGMデコードを先読みしておく
-    loadBgmBuffer();
+    loadBgmBuffer(CONFIG.BGM_SRC);
+    loadBgmBuffer(CONFIG.BGM_5MIN_SRC);
 
-    // 再生がブロックされた場合でも、次のユーザー操作時に再生を再試行
     window.addEventListener("pointerdown", ensureBgmPlaying, { passive: true });
     window.addEventListener("keydown", ensureBgmPlaying, { passive: true });
 
-    // バックグラウンドへ行ったらゲームと音楽を一時停止
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
         pauseForBackground();
       }
     });
 
-    // すべてのUIボタン押下時に drop.wav を鳴らす
     document.querySelectorAll("button").forEach((btn) => {
       btn.addEventListener("pointerdown", () => playSound("drop"));
     });
 
-    // スタート／一時停止画面タップ・クリックで開始・再開
+    // ポーズ中のみ画面タップで再開（スタート画面は NORMAL / 5MINUTES ボタンで選択）
     startScreenEl.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
-      startGame();
+      if (isPaused) {
+        resumeFromPause();
+      }
     });
 
-    // キーボード操作
+    document.getElementById("btn-start-normal").addEventListener("click", (e) => {
+      e.stopPropagation();
+      startWithMode("normal");
+    });
+    document.getElementById("btn-start-5min").addEventListener("click", (e) => {
+      e.stopPropagation();
+      startWithMode("5min");
+    });
+
     window.addEventListener("keydown", (e) => {
       if (isPaused) {
         if (e.key === " " || e.key === "Enter") {
@@ -1187,7 +1305,7 @@
       if (!isStarted) {
         if (e.key === " " || e.key === "Enter") {
           e.preventDefault();
-          startGame();
+          startWithMode("normal");
         }
         return;
       }
@@ -1206,20 +1324,19 @@
         e.preventDefault();
         dropToColumn(activePiece.c);
       } else if (e.key === "r" || e.key === "R") {
-        resetGame(true);
+        resetGame(true, gameMode);
       }
     });
 
-    // ボタン操作
     document.getElementById("btn-left").addEventListener("click", () => movePiece(0, -1));
     document.getElementById("btn-down").addEventListener("click", () => hardDrop());
     document.getElementById("btn-right").addEventListener("click", () => movePiece(0, 1));
-    document.getElementById("btn-reset").addEventListener("click", () => resetGame(false));
-    document.getElementById("btn-retry").addEventListener("click", () => resetGame(true));
+    document.getElementById("btn-reset").addEventListener("click", () => resetGame(false, gameMode));
+    document.getElementById("btn-retry-normal").addEventListener("click", () => startWithMode("normal"));
+    document.getElementById("btn-retry-5min").addEventListener("click", () => startWithMode("5min"));
     document.getElementById("btn-share-x").addEventListener("click", shareToX);
     document.getElementById("btn-share-native").addEventListener("click", shareNative);
 
-    // 盤面タップ／クリックでその列にドロップ
     canvas.addEventListener("pointerdown", (e) => {
       if (!canPlay() || !activePiece) return;
       const rect = canvas.getBoundingClientRect();
@@ -1229,8 +1346,7 @@
       dropToColumn(clickedCol);
     });
 
-    // 起動（スタート画面から待機）
-    resetGame(false);
+    resetGame(false, "normal");
     requestAnimationFrame(loop);
   </script>
 </body>
